@@ -1,0 +1,36 @@
+#!/bin/sh
+
+function usage() {
+    echo "usage: $(basename $0) [branch name] [drone build number]"
+    exit 1
+}
+
+function escape_docker_tag() {
+    echo $1 | sed 's/\//-/g;s/:/-/g'
+}
+
+if [ "$#" -ne 2 ]; then
+    echo "Argument error."
+    usage
+fi
+
+GIT_BRANCH=$1
+
+# === Generate changelog and version tag ===
+git checkout -b $GIT_BRANCH origin/$GIT_BRANCH
+standard-version -m "chore(release): %s [SKIP CI]" -t ""
+
+# === Drone auto tagging flow ===
+LAST_GIT_TAG=$(git describe --abbrev=0)
+
+# Prepare tag file for drone docker plugin
+# reference:
+# https://github.com/drone-plugins/drone-docker/pull/121
+# https://discourse.drone.io/t/any-way-to-share-variables-between-steps/571
+BRANCH_TAG=$(escape_docker_tag $GIT_BRANCH)
+BUILD_NUMBER=$(escape_docker_tag $2)
+COMMIT_SHA=$(git rev-parse --short=8 HEAD)
+echo $BRANCH_TAG,$BRANCH_TAG-$LAST_GIT_TAG,$BRANCH_TAG-$COMMIT_SHA,$BRANCH_TAG-$BUILD_NUMBER > .tags
+
+# git push tag and changelog
+git push --follow-tags origin $GIT_BRANCH
